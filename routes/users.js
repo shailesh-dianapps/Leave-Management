@@ -13,7 +13,7 @@ router.get('/', auth, permit('hr','management'), async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
     const id = req.params.id;
     if(req.user.role === 'employee' && req.user._id.toString() !== id){
-        return res.status(403).json({ error: 'Forbidden' });
+        return res.status(403).json({error: 'Forbidden'});
     }
     const user = await User.findById(id).select('-password');
     if(!user) return res.status(404).json({error: 'Not found'});
