@@ -18,7 +18,7 @@ Register Management → role: "management"
 
 ✅ Expected: All users created in DB with default leave bank (2 per month).
 
-2. Login
+2. Login:
 
 POST /api/auth/login for each user
 
