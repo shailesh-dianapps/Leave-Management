@@ -78,14 +78,17 @@ exports.getLeaves = async (req, res) => {
     try{
         const role = req.user.role;
         let leaves;
+
         if(role === 'employee'){
-            leaves = await LeaveRequest.find({applicant: req.user._id }).populate('applicant approver', 'name email role');
+            leaves = await LeaveRequest.find({applicant: req.user._id}).populate('applicant approver', 'name email role');
         } 
         else if(role === 'hr'){
-            leaves = await LeaveRequest.find({$or: [{applicant: req.user._id}, {status: 'pending'}]}).populate('applicant approver', 'name email role');
-        } 
-        else if(role === 'management'){
             leaves = await LeaveRequest.find().populate('applicant approver', 'name email role');
+            leaves = leaves.filter(l => l.applicant?.role === 'employee');
+        } 
+        else if(role === 'management'){ 
+            leaves = await LeaveRequest.find().populate('applicant approver', 'name email role');
+            leaves = leaves.filter(l => l.applicant?.role === 'hr');
         } 
         else leaves = [];
         res.json({leaves});

@@ -2,7 +2,19 @@ const User = require('../models/user');
 
 exports.getAllUsers = async (req, res) => {
     try{
-        const users = await User.find().select('-password').sort({role: 1, name: 1});
+        let filter = {};
+
+        if(req.user.role === 'hr'){
+            filter.role = 'employee';
+        } 
+        else if(req.user.role === 'management'){
+            filter.role = {$in: ['employee', 'hr']};
+        } 
+        else{
+            filter.role = {$ne: 'management'};
+        }
+
+        const users = await User.find(filter).select('-password').sort({role: 1, name: 1});
         res.json({users});
     } 
     catch(err){
