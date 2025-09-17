@@ -14,8 +14,17 @@ exports.getAllUsers = async (req, res) => {
             return res.status(403).json({error: 'Forbidden'});
         }
 
-        const users = await User.find(filter).select('-password').sort({role: 1, name: 1});
-        res.json({users});
+        let {page, limit} = req.query;
+        page = parseInt(page) || 1;  
+        limit = parseInt(limit) || 10; 
+        const skip = (page - 1) * limit;
+
+        const users = await User.find(filter).select('-password')
+            .sort({role: 1, name: 1}) .skip(skip).limit(limit);
+
+        const totalUsers = await User.countDocuments(filter);
+
+        res.json({totalUsers, page, totalPages: Math.ceil(totalUsers/limit), users});
     } 
     catch(err){
         console.error(err);

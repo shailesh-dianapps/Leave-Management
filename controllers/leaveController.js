@@ -122,12 +122,31 @@ exports.getLeaves = async (req, res) => {
             }).populate('applicant approver', 'name email role');
 
             const filteredHrLeaves = hrLeaves.filter(l => l.applicant?.role === 'hr');
-            return res.json({leaves: filteredHrLeaves});
+            return res.json({
+                totalRecords: filteredHrLeaves.length,
+                page: 1,
+                totalPages: 1,
+                leaves: filteredHrLeaves
+            });
         } 
-        else return res.json({leaves: []});
+        else return res.json({totalRecords: 0, page: 1, totalPages: 0, leaves: []});
 
-        const leaves = await LeaveRequest.find(filter).populate('applicant approver', 'name email role');
-        res.json({leaves});
+        let {page, limit} = req.query;
+        page = parseInt(page) || 1;
+        limit = parseInt(limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const totalRecords = await LeaveRequest.countDocuments(filter);
+
+        const leaves = await LeaveRequest.find(filter)
+            .populate('applicant approver', 'name email role').skip(skip).limit(limit);
+
+        res.json({
+            totalRecords,
+            page,
+            totalPages: Math.ceil(totalRecords / limit),
+            leaves
+        });
     } 
     catch(err){
         console.error(err);
