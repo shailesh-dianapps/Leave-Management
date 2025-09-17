@@ -1,9 +1,26 @@
 const PublicHoliday = require('../models/publicHoliday');
 
+function parseDateToUTC(dateStr){
+    const parts = dateStr.split('-');
+    if(parts.length !== 3) return null;
+
+    const year = parseInt(parts[0], 10);  // base-10 integer
+    const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+    const day = parseInt(parts[2], 10);
+
+    if(isNaN(year) || isNaN(month) || isNaN(day)) return null;
+    return new Date(Date.UTC(year, month, day)); // UTC midnight - return a time in miliseconds
+}
+
 exports.getHolidays = async (req, res) => {
     try{
-        const holidays = await PublicHoliday.find().sort({date: 1});
-        res.json({holidays});
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const holidays = await PublicHoliday.find().sort({date: 1}).skip(skip).limit(limit);
+        const total = await PublicHoliday.countDocuments();
+        res.json({page, limit, total, totalPages: Math.ceil(total/limit), holidays});
     } 
     catch(err){
         console.error(err);
@@ -16,13 +33,8 @@ exports.addHoliday = async (req, res) => {
         const {date, name} = req.body;
         if(!date || !name) return res.status(400).json({error: 'Missing fields'});
 
-        const dt = new Date(date);
-        if(isNaN(dt)){
-            return res.status(400).json({error: 'Invalid date format'});
-        }
-
-        // Convert to UTC midnight
-        const dtUTC = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+        const dtUTC = parseDateToUTC(date);
+        if(!dtUTC) return res.status(400).json({error: 'Invalid date format'});
 
         // Check if date is in the past (UTC)
         const todayUTC = new Date();
@@ -63,19 +75,14 @@ exports.updateHoliday = async (req, res) => {
         const update = {};
 
         if(date){
-            const dt = new Date(date);
-            if(isNaN(dt)) return res.status(400).json({error: 'Invalid date format'});
+            const dtUTC = parseDateToUTC(date);
+            if (!dtUTC) return res.status(400).json({error: 'Invalid date format'});
 
-            // Convert to UTC midnight
-            const dtUTC = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
-
-            // Check if date is in the past
+            // Check if date is in the past (UTC)
             const todayUTC = new Date();
             todayUTC.setUTCHours(0, 0, 0, 0);
+            if(dtUTC < todayUTC) return res.status(400).json({error: 'Holiday date cannot be in the past'});
 
-            if(dtUTC < todayUTC){
-                return res.status(400).json({error: 'Holiday date cannot be in the past'});
-            }
             update.date = dtUTC;
         }
 

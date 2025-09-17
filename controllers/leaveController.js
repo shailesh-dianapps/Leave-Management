@@ -2,6 +2,20 @@ const LeaveRequest = require('../models/leaveRequest');
 const PublicHoliday = require('../models/publicHoliday');
 const User = require('../models/user');
 
+function parseDateToUTC(dateStr){
+    const parts = dateStr.split('-');
+    if(parts.length !== 3) return null;
+
+    const year = parseInt(parts[0], 10);  // base-10 integer
+    const month = parseInt(parts[1], 10) - 1;   // JS months are 0-indexed
+    const day = parseInt(parts[2], 10);
+
+    if(isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+    return new Date(Date.UTC(year, month, day)); // UTC midnight - return a time in miliseconds
+}
+
+
 function normalizeUTC(d) {
     const dt = new Date(d);
     return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
@@ -12,7 +26,7 @@ async function computeWorkingDays(start, end) {
     const endDate = normalizeUTC(end);
     if(startDate > endDate) return 0;
 
-    const holidays = await PublicHoliday.find({date: {$gte: start, $lte: end}});
+    const holidays = await PublicHoliday.find({date: {$gte: startDate, $lte: endDate}});
     const holidaySet = new Set(holidays.map(h => normalizeUTC(h.date).toISOString()));
 
     let count = 0;
@@ -32,8 +46,9 @@ exports.requestLeave = async (req, res) => {
             return res.status(400).json({error: 'Missing fields'});
         }
 
-        const start = normalizeUTC(startDate);
-        const end = normalizeUTC(endDate);
+        const start = parseDateToUTC(startDate);
+        const end = parseDateToUTC(endDate);
+        if(!start || !end) return res.status(400).json({error: 'Invalid date format'});
         if(start > end) return res.status(400).json({error: 'startDate cannot be after endDate'});
 
         // Check overlapping leaves for employee or HR

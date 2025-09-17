@@ -20,7 +20,7 @@ exports.register = async (req, res) => {
         const user = new User({name, email, password: hash, role: role || 'employee', leaveBalance: 2});
         await user.save();
 
-        res.json({message: 'Registered', user: {id: user._id, name: user.name, email: user.email, role: user.role, leaveBalance: user.leaveBalance}});
+        return res.status(201).json({message: 'Registered', user: {id: user._id, name: user.name, email: user.email, role: user.role, leaveBalance: user.leaveBalance}});
     } 
     catch(err){
         console.error(err);
@@ -47,7 +47,7 @@ exports.login = async (req, res) => {
 
         await Session.create({userId: user._id, token});
 
-        res.json({
+        return res.json({
             token, 
             user: {
                 id: user._id, 
