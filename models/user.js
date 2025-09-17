@@ -7,7 +7,6 @@ const userSchema = new mongoose.Schema({
     password: {type: String, required: true},
     role: {type: String, enum: ['employee', 'hr', 'management'], default: 'employee'},
     leaveBalance: {type: Number, default: 2},
-    joinedAt: {type: Date, default: Date.now}
 }, {timestamps: true});
 
 

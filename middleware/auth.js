@@ -1,31 +1,33 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/user');
-const BlacklistedToken = require('../models/BlacklistedToken');
+const Session = require('../models/sessionModel');
 
-const auth = async (req, res, next) => {
+exports.auth = async (req, res, next) => {
     try{
-        const header = req.headers.authorization;
-        if(!header || !header.startsWith('Bearer')) return res.status(401).json({error: 'Missing token'});
-        const token = header.split(' ')[1];
+        const authHeader = req.headers["authorization"];
+        const token = authHeader && authHeader.split(" ")[1];
+        if(!token) return res.status(401).json({error: "No token provided"});
 
-        const blacklisted = await BlacklistedToken.findOne({token});
-        if(blacklisted) return res.status(401).json({error: 'Token revoked (logout)'});
+        let payload;
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select('-password');
-        if(!user) return res.status(401).json({error: 'User not found'});
+        try{
+            payload = jwt.verify(token, process.env.JWT_SECRET);
+        } 
+        catch(err){
+            return res.status(403).json({error: "Invalid token"});
+        }
 
-        req.user = user;
-        req.token = token; 
+        const session = await Session.findOne({userId: payload.id, token});
+        if(!session) return res.status(401).json({error: "Session expired or replaced"});
+        req.user = payload; 
+        req.token = token;  
         next();
-    } 
+    }
     catch(err){
-        console.error('auth middleware error', err);
-        return res.status(401).json({error: 'Unauthorized'});
+        return res.status(500).json({message: err.message})
     }
 };
 
-const permit = (...allowedRoles) => {
+exports.permit = (...allowedRoles) => {
     return (req, res, next) => {
         if(!req.user) return res.status(401).json({error: 'Unauthorized'});
         if(!allowedRoles.includes(req.user.role)) return res.status(403).json({error: 'Forbidden'});
@@ -33,4 +35,4 @@ const permit = (...allowedRoles) => {
     };
 };
 
-module.exports = {auth, permit};
+

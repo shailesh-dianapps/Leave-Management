@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
-const BlacklistedToken = require('../models/BlacklistedToken');
+const Session = require('../models/sessionModel');
 
 exports.register = async (req, res) => {
     try{
@@ -45,7 +45,18 @@ exports.login = async (req, res) => {
 
         const token = jwt.sign({id: user._id, role: user.role}, process.env.JWT_SECRET, {expiresIn: process.env.JWT_EXPIRES_IN});
 
-        res.json({token, user: {id: user._id, name: user.name, email: user.email, role: user.role, leaveBalance: user.leaveBalance}});
+        await Session.create({userId: user._id, token});
+
+        res.json({
+            token, 
+            user: {
+                id: user._id, 
+                name: user.name, 
+                email: user.email, 
+                role: user.role, 
+                leaveBalance: user.leaveBalance
+            }
+        });
     } 
     catch(err){
         console.error(err);
@@ -54,25 +65,14 @@ exports.login = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-    try{
+    try {
         const token = req.token;
         if(!token) return res.status(400).json({error: 'Token not provided'});
-        const decoded = jwt.decode(token);
-
-        if(!decoded || !decoded.exp){
-            const fallbackExp = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-            await BlacklistedToken.create({token, expiresAt: fallbackExp});
-        } 
-        else{
-            const expiresAt = new Date(decoded.exp * 1000);
-            await BlacklistedToken.create({token, expiresAt});
-        }
-
+        await Session.findOneAndDelete({ token });
         return res.json({message: 'Logged out successfully'});
-    } 
+    }
     catch(err){
-        if(err.code === 11000) return res.json({message: 'Logged out successfully'});
-        console.error('logout error', err);
+        console.error('Logout error', err);
         res.status(500).json({error: 'Server error'});
     }
 };
