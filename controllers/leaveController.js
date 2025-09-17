@@ -2,25 +2,24 @@ const LeaveRequest = require('../models/leaveRequest');
 const PublicHoliday = require('../models/publicHoliday');
 const User = require('../models/user');
 
-function normalize(d) {
+function normalizeUTC(d) {
     const dt = new Date(d);
-    dt.setHours(0, 0, 0, 0);
-    return dt;
+    return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
 }
 
 async function computeWorkingDays(start, end) {
-    const startDate = normalize(start);
-    const endDate = normalize(end);
+    const startDate = normalizeUTC(start);
+    const endDate = normalizeUTC(end);
     if(startDate > endDate) return 0;
 
-    const holidays = await PublicHoliday.find({date: {$gte: startDate, $lte: endDate}}).select('date -_id');
-    const holidaySet = new Set(holidays.map(h => normalize(h.date).toISOString()));
+    const holidays = await PublicHoliday.find({date: {$gte: start, $lte: end}});
+    const holidaySet = new Set(holidays.map(h => normalizeUTC(h.date).toISOString()));
 
     let count = 0;
-    for(let d=new Date(startDate); d<=endDate; d.setDate(d.getDate() + 1)){
-        const day = d.getDay();
-        if(day === 0 || day === 6) continue;
-        if(holidaySet.has(normalize(d).toISOString())) continue;
+    for(let d=new Date(startDate); d<=endDate; d.setUTCDate(d.getUTCDate()+1)){
+        const day = d.getUTCDay();
+        if(day === 0 || day === 6) continue; // skip weekends
+        if(holidaySet.has(normalizeUTC(d).toISOString())) continue; // skip holidays
         count++;
     }
     return count;
@@ -28,18 +27,34 @@ async function computeWorkingDays(start, end) {
 
 exports.requestLeave = async (req, res) => {
     try{
-        const { leaveType, startDate, endDate, comment } = req.body;
+        const {leaveType, startDate, endDate, comment} = req.body;
         if(!startDate || !endDate || !leaveType){
             return res.status(400).json({error: 'Missing fields'});
         }
 
-        const start = normalize(startDate);
-        const end = normalize(endDate);
+        const start = normalizeUTC(startDate);
+        const end = normalizeUTC(endDate);
         if(start > end) return res.status(400).json({error: 'startDate cannot be after endDate'});
 
+        // Check overlapping leaves for employee or HR
+        if(['employee', 'hr'].includes(req.user.role)){
+            const existing = await LeaveRequest.findOne({
+                applicant: req.user._id,
+                startDate: {$lte: end},
+                endDate: {$gte: start}
+            });
+
+            if(existing){
+                return res.status(400).json({
+                    error: 'You already have a leave request covering one or more of these dates'
+                });
+            }
+        }
+        // Check for public holidays in UTC
         const holidays = await PublicHoliday.find({date: {$gte: start, $lte: end}});
+        
         if(holidays.length > 0){
-            const holidayNames = holidays.map(h => `${h.name} (${h.date.toDateString()})`);
+            const holidayNames = holidays.map(h => `${h.name} (${h.date.toUTCString().split(' ')[0]} ${h.date.getUTCDate()})`);
             return res.status(400).json({error: `You cannot apply leave on public holidays: ${holidayNames.join(', ')}` });
         }
 
@@ -75,22 +90,28 @@ exports.requestLeave = async (req, res) => {
 };
 
 exports.getLeaves = async (req, res) => {
-    try{
+    try {
         const role = req.user.role;
-        let leaves;
+        let filter = {};
 
-        if(role === 'employee'){
-            leaves = await LeaveRequest.find({applicant: req.user._id}).populate('applicant approver', 'name email role');
-        } 
+        if(role === 'employee') filter.applicant = req.user._id;
         else if(role === 'hr'){
-            leaves = await LeaveRequest.find().populate('applicant approver', 'name email role');
-            leaves = leaves.filter(l => l.applicant?.role === 'employee');
+            filter = {
+                applicant: req.user._id,
+                status: {$in: ['pending', 'rejected']}
+            };
+        }
+        else if(role === 'management'){
+            const hrLeaves = await LeaveRequest.find({
+                status: {$in: ['pending', 'approved', 'rejected']}
+            }).populate('applicant approver', 'name email role');
+
+            const filteredHrLeaves = hrLeaves.filter(l => l.applicant?.role === 'hr');
+            return res.json({leaves: filteredHrLeaves});
         } 
-        else if(role === 'management'){ 
-            leaves = await LeaveRequest.find().populate('applicant approver', 'name email role');
-            leaves = leaves.filter(l => l.applicant?.role === 'hr');
-        } 
-        else leaves = [];
+        else return res.json({leaves: []});
+
+        const leaves = await LeaveRequest.find(filter).populate('applicant approver', 'name email role');
         res.json({leaves});
     } 
     catch(err){
@@ -149,8 +170,13 @@ exports.getMyRejectedLeaves = async (req, res) => {
 
 
 exports.getPendingLeaves = async (req, res) => {
-    try{
-        const leaves = await LeaveRequest.find({status: 'pending'}).populate('applicant approver', 'name role email');
+    try {
+        let query = {status: 'pending'};
+        let leaves = await LeaveRequest.find(query).populate('applicant approver', 'name role email');
+
+        if(req.user.role === 'hr'){
+            leaves = leaves.filter(l => l.applicant?.role === 'employee');
+        }
         res.json({leaves});
     } 
     catch(err){
@@ -161,7 +187,12 @@ exports.getPendingLeaves = async (req, res) => {
 
 exports.getRejectedLeaves = async (req, res) => {
     try{
-        const leaves = await LeaveRequest.find({status: 'rejected'}).populate('applicant approver', 'name role email');
+        let query = {status: 'rejected'};
+        let leaves = await LeaveRequest.find(query).populate('applicant approver', 'name role email');
+
+        if(req.user.role === 'hr'){
+            leaves = leaves.filter(l => l.applicant?.role === 'employee');
+        }
         res.json({leaves});
     } 
     catch(err){
@@ -172,7 +203,12 @@ exports.getRejectedLeaves = async (req, res) => {
 
 exports.getApprovedLeaves = async (req, res) => {
     try{
-        const leaves = await LeaveRequest.find({status: 'approved'}).populate('applicant approver', 'name role email');
+        let query = {status: 'approved'};
+        let leaves = await LeaveRequest.find(query).populate('applicant approver', 'name role email');
+
+        if(req.user.role === 'hr'){
+            leaves = leaves.filter(l => l.applicant?.role === 'employee');
+        }
         res.json({leaves});
     } 
     catch(err){
@@ -248,22 +284,6 @@ exports.rejectLeave = async (req, res) => {
         await leave.save();
 
         res.json({message: 'Leave rejected', leave});
-    } 
-    catch(err){
-        console.error(err);
-        res.status(500).json({error: 'Server error'});
-    }
-};
-
-exports.monthlyAccrual = async (req, res) => {
-    try{
-        if(!['hr', 'management'].includes(req.user.role)){
-            return res.status(403).json({error: 'Only HR or Management can run accrual'});
-        }
-        const add = 2;
-        const result = await User.updateMany({}, {$inc: { leaveBalance: add}});
-        const modified = result.nModified ?? result.modifiedCount ?? 0;
-        res.json({message: `Added ${add} ays to all users`, modifiedCount: modified});
     } 
     catch(err){
         console.error(err);

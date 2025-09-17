@@ -11,7 +11,7 @@ exports.getAllUsers = async (req, res) => {
             filter.role = {$in: ['employee', 'hr']};
         } 
         else{
-            filter.role = {$ne: 'management'};
+            return res.status(403).json({error: 'Forbidden'});
         }
 
         const users = await User.find(filter).select('-password').sort({role: 1, name: 1});
@@ -26,7 +26,7 @@ exports.getAllUsers = async (req, res) => {
 exports.getUserById = async (req, res) => {
     try{
         const id = req.params.id;
-        if(req.user.role === 'employee' && req.user._id.toString() !== id){
+        if(req.user.role === 'employee' && !req.user._id.equals(id)){
             return res.status(403).json({error: 'Forbidden'});
         }
         const user = await User.findById(id).select('-password');

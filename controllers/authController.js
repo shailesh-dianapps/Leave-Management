@@ -68,7 +68,7 @@ exports.logout = async (req, res) => {
     try {
         const token = req.token;
         if(!token) return res.status(400).json({error: 'Token not provided'});
-        await Session.findOneAndDelete({ token });
+        await Session.findOneAndDelete({token});
         return res.json({message: 'Logged out successfully'});
     }
     catch(err){

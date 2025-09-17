@@ -17,10 +17,18 @@ exports.addHoliday = async (req, res) => {
         if(!date || !name) return res.status(400).json({error: 'Missing fields'});
 
         const dt = new Date(date);
-        if(isNaN(dt)) return res.status(400).json({error: 'Invalid date format'});
+        if(isNaN(dt)){
+            return res.status(400).json({error: 'Invalid date format'});
+        }
 
-        dt.setHours(0, 0, 0, 0);
-        if(dt < new Date().setHours(0, 0, 0, 0)){
+        // Convert to UTC midnight
+        const dtUTC = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+
+        // Check if date is in the past (UTC)
+        const todayUTC = new Date();
+        todayUTC.setUTCHours(0, 0, 0, 0);
+
+        if(dtUTC < todayUTC){
             return res.status(400).json({error: 'Holiday date cannot be in the past'});
         }
 
@@ -28,18 +36,26 @@ exports.addHoliday = async (req, res) => {
             return res.status(400).json({error: 'Holiday name must be at least 3 characters'});
         }
 
-        const existing = await PublicHoliday.findOne({date: dt});
-        if(existing) return res.status(400).json({error: 'Holiday already exists on that date'});
+        const existing = await PublicHoliday.findOne({date: dtUTC, name: name.trim()});
+        if(existing){
+            return res.status(400).json({error: `Holiday '${name.trim()}' already exists on this date`});
+        }
 
-        const h = new PublicHoliday({date: dt, name: name.trim(), createdBy: req.user._id});
+        const h = new PublicHoliday({
+            date: dtUTC,
+            name: name.trim(),
+            createdBy: req.user._id
+        });
         await h.save();
+
         res.json({message: 'Holiday added', holiday: h});
     } 
-    catch(err){
+    catch(err){ 
         console.error(err);
         res.status(500).json({error: 'Server error'});
     }
 };
+
 
 exports.updateHoliday = async (req, res) => {
     try{
@@ -50,17 +66,17 @@ exports.updateHoliday = async (req, res) => {
             const dt = new Date(date);
             if(isNaN(dt)) return res.status(400).json({error: 'Invalid date format'});
 
-            dt.setHours(0, 0, 0, 0);
-            if(dt < new Date().setHours(0, 0, 0, 0)){
+            // Convert to UTC midnight
+            const dtUTC = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+
+            // Check if date is in the past
+            const todayUTC = new Date();
+            todayUTC.setUTCHours(0, 0, 0, 0);
+
+            if(dtUTC < todayUTC){
                 return res.status(400).json({error: 'Holiday date cannot be in the past'});
             }
-
-            const existing = await PublicHoliday.findOne({date: dt, _id: { $ne: req.params.id}});
-            if(existing){
-                return res.status(400).json({error: 'Another holiday already exists on that date'});
-            }
-
-            update.date = dt;
+            update.date = dtUTC;
         }
 
         if(name){
@@ -68,6 +84,17 @@ exports.updateHoliday = async (req, res) => {
                 return res.status(400).json({error: 'Holiday name must be at least 3 characters'});
             }
             update.name = name.trim();
+        }
+
+        if(update.date || update.name){
+            const existing = await PublicHoliday.findOne({
+                _id: {$ne: req.params.id},
+                date: update.date || undefined,
+                name: update.name || undefined
+            });
+            if(existing){
+                return res.status(400).json({error: 'A holiday with the same name already exists on this date'});
+            }
         }
 
         const h = await PublicHoliday.findByIdAndUpdate(req.params.id, update, {new: true});
