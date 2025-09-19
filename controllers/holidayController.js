@@ -38,7 +38,7 @@ async function rejectLeavesOnHoliday(holiday) {
         endDate: {$gte: holidayDate}
     }).populate('applicant');
 
-    for (let leave of overlappingLeaves) {
+    for(let leave of overlappingLeaves){
         const applicantRole = leave.applicant.role;
 
         // restore balance
