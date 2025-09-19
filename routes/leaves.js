@@ -4,13 +4,16 @@ const {requestLeave, getLeaves, approveLeave, rejectLeave, getPendingLeaves, get
 
 const router = express.Router();
 
-router.post('/', auth, requestLeave);
+router.post('/', auth, permit('employee', 'hr'), requestLeave);
 router.get('/', auth, getLeaves);
 
+// own leaves of hr and emp
 router.get('/my/approved', auth, getMyApprovedLeaves);
 router.get('/my/rejected', auth, getMyRejectedLeaves);
 router.get('/my/pending', auth, getMyPendingLeaves);
 
+// hr can see emp leaves
+// management can see hr leaves
 router.get('/approved', auth, permit('hr', 'management'), getApprovedLeaves);
 router.get('/rejected', auth, permit('hr', 'management'), getRejectedLeaves);
 router.get('/pending', auth, permit('hr', 'management'), getPendingLeaves);
