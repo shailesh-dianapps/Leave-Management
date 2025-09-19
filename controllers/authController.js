@@ -66,7 +66,8 @@ exports.login = async (req, res) => {
 
 exports.logout = async (req, res) => {
     try {
-        const token = req.token;
+        const authHeader = req.headers["authorization"];
+        const token = authHeader && authHeader.split(" ")[1];
         if(!token) return res.status(400).json({error: 'Token not provided'});
         await Session.findOneAndDelete({token});
         return res.json({message: 'Logged out successfully'});

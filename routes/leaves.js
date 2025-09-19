@@ -11,9 +11,10 @@ router.get('/my/approved', auth, getMyApprovedLeaves);
 router.get('/my/rejected', auth, getMyRejectedLeaves);
 router.get('/my/pending', auth, getMyPendingLeaves);
 
-router.get('/approved', auth, permit('hr'), getApprovedLeaves);
-router.get('/rejected', auth, permit('hr'), getRejectedLeaves);
-router.get('/pending', auth, permit('hr'), getPendingLeaves);
+router.get('/approved', auth, permit('hr', 'management'), getApprovedLeaves);
+router.get('/rejected', auth, permit('hr', 'management'), getRejectedLeaves);
+router.get('/pending', auth, permit('hr', 'management'), getPendingLeaves);
+
 router.put('/:id/approve', auth, permit('hr', 'management'), approveLeave);
 router.put('/:id/reject', auth, permit('hr', 'management'), rejectLeave);
 

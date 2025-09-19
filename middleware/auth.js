@@ -23,7 +23,6 @@ exports.auth = async (req, res, next) => {
 
         // Normalize user object
         req.user = {...payload, _id: payload._id || payload.id};
-        req.token = token;
         next();
     }
     catch(err){

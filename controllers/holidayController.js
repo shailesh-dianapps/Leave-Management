@@ -1,4 +1,5 @@
 const PublicHoliday = require('../models/publicHoliday');
+const LeaveRequest = require('../models/leaveRequest');
 
 function parseDateToUTC(dateStr){
     const parts = dateStr.split('-');
@@ -27,6 +28,40 @@ exports.getHolidays = async (req, res) => {
         res.status(500).json({error: 'Server error'});
     }
 };
+
+async function rejectLeavesOnHoliday(holiday) {
+    const holidayDate = holiday.date;
+
+    const overlappingLeaves = await LeaveRequest.find({
+        status: 'approved',
+        startDate: {$lte: holidayDate},
+        endDate: {$gte: holidayDate}
+    }).populate('applicant');
+
+    for (let leave of overlappingLeaves) {
+        const applicantRole = leave.applicant.role;
+
+        // restore balance
+        const applicant = await User.findById(leave.applicant._id);
+        if(applicant){
+            applicant.leaveBalance += leave.workingDays;
+            await applicant.save();
+        }
+
+        if(applicantRole === 'employee'){
+            leave.status = 'rejected';
+            leave.updatedAt = new Date();
+            leave.rejectedBy = 'hr'; 
+            await leave.save();
+        } 
+        else if(applicantRole === 'hr'){
+            leave.status = 'rejected';
+            leave.updatedAt = new Date();
+            leave.rejectedBy = 'management'; 
+            await leave.save();
+        }
+    }
+}
 
 exports.addHoliday = async (req, res) => {
     try{
@@ -60,7 +95,8 @@ exports.addHoliday = async (req, res) => {
         });
         await h.save();
 
-        res.json({message: 'Holiday added', holiday: h});
+        await rejectLeavesOnHoliday(h);
+        res.json({message: 'Holiday added (overlapping leaves rejected)', holiday: h});
     } 
     catch(err){ 
         console.error(err);
@@ -126,3 +162,5 @@ exports.deleteHoliday = async (req, res) => {
         res.status(500).json({error: 'Server error'});
     }
 };
+
+
