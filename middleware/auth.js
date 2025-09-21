@@ -16,13 +16,13 @@ exports.auth = async (req, res, next) => {
             return res.status(403).json({error: "Invalid token"});
         }
 
-        const session = await Session.findOne({userId: payload.id || payload._id, token});
+        const session = await Session.findOne({userId: payload.id, token});
         if(!session){
             return res.status(401).json({ error: "Session expired or replaced"});
         }
 
         // Normalize user object
-        req.user = {...payload, _id: payload._id || payload.id};
+        req.user = {...payload, _id: payload.id};
         next();
     }
     catch(err){

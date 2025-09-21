@@ -51,12 +51,7 @@ exports.requestLeave = async (req, res) => {
         if(start > end) return res.status(400).json({error: 'startDate cannot be after endDate'});
 
         const today = normalizeUTC(new Date());
-        if(end < today){
-            return res.status(400).json({error: 'Leave dates cannot be in the past'});
-        }
-        if(start < today){
-            return res.status(400).json({error: 'Leave cannot start in the past'});
-        }
+        if(start < today) return res.status(400).json({error: 'Leave cannot start in the past'});
 
         // Check overlapping leaves for employee or HR
         if(['employee', 'hr'].includes(req.user.role)){
@@ -111,52 +106,8 @@ exports.requestLeave = async (req, res) => {
     }
 };
 
-exports.getLeaves = async (req, res) => {
-    try{
-        const role = req.user.role;
-        let filter = {};
-
-        if(role === 'employee'){
-            return res.json({totalRecords: 0, page: 1, totalPages: 0, leaves: []});
-        } 
-        else if(role === 'hr'){
-            const employeeLeaves = await LeaveRequest.find({status: 'pending'})
-                .populate('applicant approver', 'name email role');
-
-            // filter only employee applicants
-            const filtered = employeeLeaves.filter(l => l.applicant?.role === 'employee');
-
-            return res.json({
-                totalRecords: filtered.length,
-                page: 1,
-                totalPages: 1,
-                leaves: filtered
-            });
-        } 
-        else if(role === 'management'){
-            const hrLeaves = await LeaveRequest.find({status: 'pending'})
-                .populate('applicant approver', 'name email role');
-
-            const filtered = hrLeaves.filter(l => l.applicant?.role === 'hr');
-
-            return res.json({
-                totalRecords: filtered.length,
-                page: 1,
-                totalPages: 1,
-                leaves: filtered
-            });
-        } 
-        else return res.json({totalRecords: 0, page: 1, totalPages: 0, leaves: []});
-    } 
-    catch(err){
-        console.error(err);
-        res.status(500).json({error: 'Server error'});
-    }
-};
-
-
-// Get user's and hr pending leave requests
-exports.getMyPendingLeaves = async (req, res) => {
+// own leaves of hr and emp
+async function getMyLeavesByStatus(req, res, status){
     try{
         if(!['employee', 'hr'].includes(req.user.role)){
             return res.status(403).json({error: 'Only employees and HR can view their own leaves'});
@@ -164,63 +115,28 @@ exports.getMyPendingLeaves = async (req, res) => {
 
         const leaves = await LeaveRequest.find({
             applicant: req.user._id,
-            status: 'pending'
+            status
         }).populate('applicant approver', 'name role email');
-        
+
         res.json({leaves});
     } 
     catch(err){
         console.error(err);
         res.status(500).json({error: 'Server error'});
     }
-};
+}
 
-// Get user's and hr approved leave requests
-exports.getMyApprovedLeaves = async (req, res) => {
+// own leaves of hr and emp
+exports.getMyPendingLeaves = (req, res) => getMyLeavesByStatus(req, res, 'pending');
+exports.getMyApprovedLeaves = (req, res) => getMyLeavesByStatus(req, res, 'approved');
+exports.getMyRejectedLeaves = (req, res) => getMyLeavesByStatus(req, res, 'rejected');
+
+
+// hr can see emp leaves
+// management can see hr leaves
+async function getLeavesByStatusForRole(req, res, status){
     try{
-        if(!['employee', 'hr'].includes(req.user.role)){
-            return res.status(403).json({error: 'Only employees and HR can view their own leaves'});
-        }
-
-        const leaves = await LeaveRequest.find({
-            applicant: req.user._id,
-            status: 'approved'
-        }).populate('applicant approver', 'name role email');
-        
-        res.json({ leaves });
-    } 
-    catch(err){
-        console.error(err);
-        res.status(500).json({error: 'Server error'});
-    }
-};
-
-// Get user's and hr rejected leave requests
-exports.getMyRejectedLeaves = async (req, res) => {
-    try{
-        if(!['employee', 'hr'].includes(req.user.role)){
-            return res.status(403).json({error: 'Only employees and HR can view their own leaves'});
-        }
-
-        const leaves = await LeaveRequest.find({
-            applicant: req.user._id,
-            status: 'rejected'
-        }).populate('applicant approver', 'name role email');
-        
-        res.json({leaves});
-    } 
-    catch(err){
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
-    }
-};
-
-
-
-async function getLeavesByStatus(req, res, status){
-    try{
-        let query = {status};
-        let leaves = await LeaveRequest.find(query).populate('applicant approver', 'name role email');
+        let leaves = await LeaveRequest.find({status}).populate('applicant approver', 'name role email');
 
         if(req.user.role === 'hr'){
             leaves = leaves.filter(l => l.applicant?.role === 'employee');
@@ -229,7 +145,7 @@ async function getLeavesByStatus(req, res, status){
             leaves = leaves.filter(l => l.applicant?.role === 'hr');
         } 
         else{
-            return res.json({leaves: []});
+            return res.status(403).json({error: 'Forbidden'});
         }
 
         res.json({leaves});
@@ -240,12 +156,14 @@ async function getLeavesByStatus(req, res, status){
     }
 }
 
-exports.getPendingLeaves = (req, res) => getLeavesByStatus(req, res, 'pending');
-exports.getRejectedLeaves = (req, res) => getLeavesByStatus(req, res, 'rejected');
-exports.getApprovedLeaves = (req, res) => getLeavesByStatus(req, res, 'approved');
+// hr can see emp leaves
+// management can see hr leaves
+exports.getPendingLeaves = (req, res) => getLeavesByStatusForRole(req, res, 'pending');
+exports.getRejectedLeaves = (req, res) => getLeavesByStatusForRole(req, res, 'rejected');
+exports.getApprovedLeaves = (req, res) => getLeavesByStatusForRole(req, res, 'approved');
 
 
-exports.approveLeave = async (req, res) => {
+exports.approveLeaveRequest = async (req, res) => {
     try{
         const leave = await LeaveRequest.findById(req.params.id).populate('applicant');
         if(!leave) return res.status(404).json({error: 'Leave not found'});
@@ -267,7 +185,7 @@ exports.approveLeave = async (req, res) => {
         const applicant = await User.findById(leave.applicant._id);
         if(!applicant) return res.status(404).json({error: 'Applicant not found'});
 
-        if(applicant.leaveBalance < leave.workingDays) {
+        if(applicant.leaveBalance < leave.workingDays){
             return res.status(400).json({error: `User has only ${applicant.leaveBalance} days left`});
         }
 
@@ -287,7 +205,7 @@ exports.approveLeave = async (req, res) => {
     }
 };
 
-exports.rejectLeave = async (req, res) => {
+exports.rejectLeaveRequest = async (req, res) => {
     try{
         const leave = await LeaveRequest.findById(req.params.id).populate('applicant');
         if (!leave) return res.status(404).json({error: 'Leave not found'});

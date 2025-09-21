@@ -1,5 +1,6 @@
 const PublicHoliday = require('../models/publicHoliday');
 const LeaveRequest = require('../models/leaveRequest');
+const User = require('../models/user');
 
 function parseDateToUTC(dateStr){
     const parts = dateStr.split('-');
@@ -38,29 +39,42 @@ async function rejectLeavesOnHoliday(holiday) {
         endDate: {$gte: holidayDate}
     }).populate('applicant');
 
+    if(!overlappingLeaves.length) return;
+
+    const bulkUserOps = [];
+    const bulkLeaveOps = [];
+
     for(let leave of overlappingLeaves){
-        const applicantRole = leave.applicant.role;
+        const applicant = leave.applicant;
+        if(!applicant) continue;
 
         // restore balance
-        const applicant = await User.findById(leave.applicant._id);
-        if(applicant){
-            applicant.leaveBalance += leave.workingDays;
-            await applicant.save();
-        }
+        bulkUserOps.push({
+            updateOne: {
+                filter: {_id: applicant._id},
+                update: {$inc: {leaveBalance: leave.workingDays}}
+            }
+        });
 
-        if(applicantRole === 'employee'){
-            leave.status = 'rejected';
-            leave.updatedAt = new Date();
-            leave.rejectedBy = 'hr'; 
-            await leave.save();
-        } 
-        else if(applicantRole === 'hr'){
-            leave.status = 'rejected';
-            leave.updatedAt = new Date();
-            leave.rejectedBy = 'management'; 
-            await leave.save();
-        }
+        const rejectedBy = applicant.role === 'employee' ? 'hr' : 'management';
+
+        bulkLeaveOps.push({
+            updateOne: {
+                filter: {_id: leave._id},
+                update: {
+                    $set: {
+                        status: 'rejected',
+                        updatedAt: new Date(),
+                        rejectedBy,
+                        rejectedReason: `Rejected due to public holiday on ${holidayDate.toISOString().split('T')[0]}`
+                    }
+                }
+            }
+        });
     }
+
+    if(bulkUserOps.length) await User.bulkWrite(bulkUserOps);
+    if(bulkLeaveOps.length) await LeaveRequest.bulkWrite(bulkLeaveOps);
 }
 
 exports.addHoliday = async (req, res) => {
@@ -143,6 +157,8 @@ exports.updateHoliday = async (req, res) => {
         const h = await PublicHoliday.findByIdAndUpdate(req.params.id, update, {new: true});
         if(!h) return res.status(404).json({error: 'Holiday not found'});
 
+        if(update.date) await rejectLeavesOnHoliday(h);
+
         res.json({message: 'Holiday updated', holiday: h});
     } 
     catch(err){
@@ -162,5 +178,3 @@ exports.deleteHoliday = async (req, res) => {
         res.status(500).json({error: 'Server error'});
     }
 };
-
-

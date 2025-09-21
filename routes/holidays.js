@@ -4,8 +4,11 @@ const {addHoliday, getHolidays, updateHoliday, deleteHoliday} = require('../cont
 
 const router = express.Router();
 
-router.post('/', auth, permit('hr'), addHoliday);
+// all emp, hr, management can see public holiday
 router.get('/', auth, getHolidays);
+
+// only hr can add, delete, update public holiday
+router.post('/', auth, permit('hr'), addHoliday);
 router.put('/:id', auth, permit('hr'), updateHoliday);
 router.delete('/:id', auth, permit('hr'), deleteHoliday);
 
