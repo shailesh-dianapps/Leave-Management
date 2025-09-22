@@ -20,7 +20,7 @@ function leaveUpdater() {
                 {role: {$in: ["employee", "hr"]}},
                 {$inc: {leaveBalance: 2}}
             );
-            console.log(`Leave balance updated for ${result.modifiedCount} users.`);
+            console.log('Leave balance updated');
         } 
         catch(err){
             console.error("Error updating leave balance:", err.message);
