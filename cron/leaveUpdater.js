@@ -10,20 +10,20 @@ const User = require('../models/user');
 // * any month
 // * any day of the week
 
-const leaveUpdater = cron.schedule("0 0 1 * *", async () => {
-    try{
-        console.log("Running monthly leave balance update...");
-        const result = await User.updateMany(
-            {role: {$in: ["employee", "hr"]}},
-            {$inc: {leaveBalance: 2}}
-        );
-        console.log(`Leave balance updated for ${result.modifiedCount} users.`);
-    } 
-    catch(err){
-        console.error("Error updating leave balance:", err.message);
-    }
-}, {
-  scheduled: false, // prevent auto-start, we will start it in server.js
-});
+function leaveUpdater() {
+    cron.schedule("0 0 1 * *", async () => {
+        try{
+            console.log("Running monthly leave balance update...");
+            const result = await User.updateMany(
+                {role: {$in: ["employee", "hr"]}},
+                {$inc: {leaveBalance: 2}}
+            );
+            console.log(`Leave balance updated for ${result.modifiedCount} users.`);
+        } 
+        catch(err){
+            console.error("Error updating leave balance:", err.message);
+        }
+    })
+}
 
 module.exports = leaveUpdater;

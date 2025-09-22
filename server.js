@@ -14,12 +14,12 @@ app.use(express.json());
 
 connectDB();
 
+leaveUpdater();
+
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/leaves', leaveRoutes);
 app.use('/holidays', holidayRoutes);
-
-leaveUpdater.start();
 
 const port = process.env.PORT;
 
