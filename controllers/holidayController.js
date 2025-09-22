@@ -88,6 +88,7 @@ exports.addHoliday = async (req, res) => {
         // Check if date is in the past (UTC)
         const todayUTC = new Date();
         todayUTC.setUTCHours(0, 0, 0, 0);
+        // setUTCHours(hour, min, sec, millisec)
 
         if(dtUTC < todayUTC){
             return res.status(400).json({error: 'Holiday date cannot be in the past'});
